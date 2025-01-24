@@ -1,0 +1,243 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from PIL import Image
+
+# Global variables
+selected_file = None
+ascii_frames = []
+default_width = 80
+animation_running = False
+current_frame_delay = 100  # Default delay (ms) between frames
+
+
+def extract_gif_frames(gif_path):
+    """
+    Extract all frames from a GIF file.
+    """
+    img = Image.open(gif_path)
+    frames = []
+    try:
+        while True:
+            frames.append(img.copy())
+            img.seek(img.tell() + 1)
+    except EOFError:
+        pass
+    return frames
+
+
+def image_to_ascii(image, width=80):
+    """
+    Convert an image to ASCII art.
+    """
+    ascii_chars = "@%#*=-. "
+    aspect_ratio = 0.55
+    new_height = int((width * aspect_ratio * image.height) / image.width)
+    image = image.resize((width, new_height)).convert("L")
+
+    pixels = list(image.getdata())
+    total_pixels = len(pixels)
+
+    ascii_str = ''.join([ascii_chars[pixel // (256 // len(ascii_chars))] for pixel in pixels])
+    ascii_lines = [ascii_str[i:i + width] for i in range(0, total_pixels, width)]
+    return ascii_lines
+
+
+def select_file():
+    """
+    Open a file dialog to select a GIF file.
+    """
+    global selected_file
+    file_path = filedialog.askopenfilename(
+        title="Select a GIF File",
+        filetypes=[("GIF Files", "*.gif"), ("All Files", "*.*")]
+    )
+    if file_path:
+        selected_file = file_path
+        label_file_selected.config(text=f"Selected: {file_path}")
+        status_label.config(text="GIF Selected. Ready to process.")
+    else:
+        messagebox.showinfo("No File Selected", "Please select a valid GIF file.")
+
+
+def process_file():
+    """
+    Process the selected GIF file to generate ASCII art for all frames.
+    """
+    global selected_file, ascii_frames, default_width
+    if not selected_file:
+        messagebox.showwarning("No File Selected", "Please select a file to process.")
+        return
+
+    try:
+        status_label.config(text="Processing GIF...")
+        gif_frames = extract_gif_frames(selected_file)
+        ascii_frames.clear()
+        ascii_frames.extend([image_to_ascii(frame, width=default_width) for frame in gif_frames])
+        status_label.config(text="Processing Complete. Ready to play.")
+        messagebox.showinfo("Success", "Frames processed! Ready to play.")
+    except Exception as e:
+        messagebox.showerror("Processing Error", f"Failed to process GIF: {e}")
+        status_label.config(text="Error occurred during processing.")
+
+
+def play_animation():
+    """
+    Play the ASCII animation in the Text widget.
+    """
+    global animation_running
+
+    if not ascii_frames:
+        messagebox.showwarning("No Frames", "No frames to display. Process a GIF first.")
+        return
+
+    animation_running = True
+    status_label.config(text="Animation Playing...")
+    display_frame(0)
+
+
+def display_frame(frame_index):
+    """
+    Display a single frame in the Text widget.
+    """
+    global animation_running
+
+    if not animation_running or frame_index >= len(ascii_frames):
+        status_label.config(text="Animation Stopped.")
+        return
+
+    frame = ascii_frames[frame_index]
+
+    text_widget.delete(1.0, tk.END)
+    text_widget.insert(tk.END, "\n".join(frame))
+    update_window_and_text_widget_size(frame)
+
+    root.after(current_frame_delay, display_frame, frame_index + 1)
+
+
+def stop_animation():
+    """
+    Stop the ASCII animation.
+    """
+    global animation_running
+    animation_running = False
+    status_label.config(text="Animation Stopped.")
+
+
+def clear_display():
+    """
+    Clear the current display, reset all variables, and start fresh.
+    """
+    global selected_file, ascii_frames, animation_running
+    selected_file = None
+    ascii_frames.clear()
+    animation_running = False
+
+    text_widget.delete(1.0, tk.END)
+    label_file_selected.config(text="No file selected")
+    status_label.config(text="Cleared. Ready to start fresh.")
+    root.geometry("800x600")  # Reset window to default size
+
+
+def update_window_and_text_widget_size(frame):
+    """
+    Dynamically resize the window and Text widget to fit the ASCII art.
+    """
+    rows = len(frame)
+    cols = max(len(line) for line in frame)
+
+    text_widget.config(width=cols, height=rows)
+
+    root.update_idletasks()
+    decoration_width = root.winfo_width() - text_widget.winfo_width()
+    decoration_height = root.winfo_height() - text_widget.winfo_height()
+
+    char_width = 8
+    char_height = 15
+    window_width = cols * char_width + decoration_width
+    window_height = rows * char_height + decoration_height
+
+    root.geometry(f"{window_width}x{window_height}")
+
+
+def set_frame_delay(value):
+    """
+    Update the animation frame delay based on the slider value.
+    """
+    global current_frame_delay
+    current_frame_delay = int(value)
+    status_label.config(text=f"Animation Speed Set to {value}ms")
+
+
+def show_help():
+    """
+    Display help information in a messagebox.
+    """
+    help_text = (
+        "1. Click 'Select File' to choose a GIF.\n"
+        "2. Click 'Process File' to convert the GIF into ASCII art.\n"
+        "3. Use 'Play Animation' to view the ASCII animation.\n"
+        "4. Adjust animation speed using the slider.\n"
+        "5. Use 'Clear' to reset and start fresh."
+    )
+    messagebox.showinfo("Help", help_text)
+
+
+# Main GUI
+root = tk.Tk()
+root.title("ASCII Art Animation Viewer")
+
+# Menu bar
+menu_bar = tk.Menu(root)
+help_menu = tk.Menu(menu_bar, tearoff=0)
+help_menu.add_command(label="Help", command=show_help)
+help_menu.add_command(label="About", command=lambda: messagebox.showinfo("About", "ASCII Art Animation Viewer v1.0"))
+menu_bar.add_cascade(label="Help", menu=help_menu)
+root.config(menu=menu_bar)
+
+# File selection frame
+file_frame = tk.Frame(root)
+file_frame.pack(pady=10)
+
+label_file_selected = tk.Label(file_frame, text="No file selected", font=("Helvetica", 12))
+label_file_selected.pack()
+
+button_select = tk.Button(file_frame, text="Select File", command=select_file, width=20)
+button_select.pack(pady=5)
+
+# Control buttons frame
+controls_frame = tk.Frame(root)
+controls_frame.pack(pady=10)
+
+button_process = tk.Button(controls_frame, text="Process File", command=process_file, width=15)
+button_process.grid(row=0, column=0, padx=5)
+
+button_play = tk.Button(controls_frame, text="Play Animation", command=play_animation, width=15)
+button_play.grid(row=0, column=1, padx=5)
+
+button_stop = tk.Button(controls_frame, text="Stop Animation", command=stop_animation, width=15)
+button_stop.grid(row=0, column=2, padx=5)
+
+button_clear = tk.Button(controls_frame, text="Clear", command=clear_display, width=15)
+button_clear.grid(row=0, column=3, padx=5)
+
+# Animation speed slider
+speed_frame = tk.Frame(root)
+speed_frame.pack(pady=10)
+
+speed_label = tk.Label(speed_frame, text="Animation Speed (ms):", font=("Helvetica", 10))
+speed_label.pack(side="left", padx=5)
+
+speed_slider = tk.Scale(speed_frame, from_=50, to=500, orient="horizontal", command=set_frame_delay)
+speed_slider.set(current_frame_delay)
+speed_slider.pack(side="left", padx=5)
+
+# Status label
+status_label = tk.Label(root, text="Welcome! Select a GIF to get started.", font=("Helvetica", 10), fg="blue")
+status_label.pack(pady=10)
+
+# Text widget for ASCII display
+text_widget = tk.Text(root, wrap="none", font=("Courier", 10), bg="black", fg="white")
+text_widget.pack(padx=10, pady=10, expand=True, fill="both")
+
+# Run the GUI
+root.mainloop()
